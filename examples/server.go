@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"strings"
 	"os"
+	"strings"
 
-	"github.com/apexskier/httpauth"
+	"github.com/anoopengineer/httpauth"
 	"github.com/gorilla/mux"
 )
 
@@ -38,7 +38,7 @@ func main() {
 
 	// create a default user
 	username := "admin"
-	defaultUser := httpauth.UserData{Username: username, Role: "admin"}
+	defaultUser := httpauth.NewDefaultUser(username, "", "admin")
 	err = backend.SaveUser(defaultUser)
 	if err != nil {
 		panic(err)
@@ -105,8 +105,8 @@ func postLogin(rw http.ResponseWriter, req *http.Request) {
 
 func postRegister(rw http.ResponseWriter, req *http.Request) {
 	var user httpauth.UserData
-	user.Username = req.PostFormValue("username")
-	user.Email = req.PostFormValue("email")
+	user.SetUsername(req.PostFormValue("username"))
+	user.SetEmail(req.PostFormValue("email"))
 	password := req.PostFormValue("password")
 	if err := aaa.Register(rw, req, user, password); err == nil {
 		postLogin(rw, req)
@@ -117,10 +117,10 @@ func postRegister(rw http.ResponseWriter, req *http.Request) {
 
 func postAddUser(rw http.ResponseWriter, req *http.Request) {
 	var user httpauth.UserData
-	user.Username = req.PostFormValue("username")
-	user.Email = req.PostFormValue("email")
+	user.SetUsername(req.PostFormValue("username"))
+	user.SetEmail(req.PostFormValue("email"))
 	password := req.PostFormValue("password")
-	user.Role = req.PostFormValue("role")
+	user.SetRole(req.PostFormValue("role"))
 	if err := aaa.Register(rw, req, user, password); err != nil {
 		// maybe something
 	}
@@ -142,7 +142,7 @@ func handlePage(rw http.ResponseWriter, req *http.Request) {
 	}
 	if user, err := aaa.CurrentUser(rw, req); err == nil {
 		type data struct {
-			User httpauth.UserData
+			User httpauth.User
 		}
 		d := data{User: user}
 		t, err := template.New("page").Parse(`
@@ -177,9 +177,9 @@ func handleAdmin(rw http.ResponseWriter, req *http.Request) {
 	}
 	if user, err := aaa.CurrentUser(rw, req); err == nil {
 		type data struct {
-			User  httpauth.UserData
+			User  httpauth.User
 			Roles map[string]httpauth.Role
-			Users []httpauth.UserData
+			Users []httpauth.User
 			Msg   []string
 		}
 		messages := aaa.Messages(rw, req)

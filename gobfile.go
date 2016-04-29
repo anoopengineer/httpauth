@@ -17,7 +17,7 @@ var (
 // GobFileAuthBackend stores user data and the location of the gob file.
 type GobFileAuthBackend struct {
 	filepath string
-	users    map[string]UserData
+	users    map[string]User
 }
 
 // NewGobFileAuthBackend initializes a new backend by loading a map of users
@@ -39,14 +39,14 @@ func NewGobFileAuthBackend(filepath string) (b GobFileAuthBackend, e error) {
 		return b, ErrMissingBackend
 	}
 	if b.users == nil {
-		b.users = make(map[string]UserData)
+		b.users = make(map[string]User)
 	}
 	return b, nil
 }
 
 // User returns the user with the given username. Error is set to
 // ErrMissingUser if user is not found.
-func (b GobFileAuthBackend) User(username string) (user UserData, e error) {
+func (b GobFileAuthBackend) User(username string) (user User, e error) {
 	if user, ok := b.users[username]; ok {
 		return user, nil
 	}
@@ -54,7 +54,7 @@ func (b GobFileAuthBackend) User(username string) (user UserData, e error) {
 }
 
 // Users returns a slice of all users.
-func (b GobFileAuthBackend) Users() (us []UserData, e error) {
+func (b GobFileAuthBackend) Users() (us []User, e error) {
 	for _, user := range b.users {
 		us = append(us, user)
 	}
@@ -63,8 +63,8 @@ func (b GobFileAuthBackend) Users() (us []UserData, e error) {
 
 // SaveUser adds a new user, replacing one with the same username, and saves a
 // gob file.
-func (b GobFileAuthBackend) SaveUser(user UserData) error {
-	b.users[user.Username] = user
+func (b GobFileAuthBackend) SaveUser(user User) error {
+	b.users[user.Username()] = user
 	err := b.save()
 	return err
 }

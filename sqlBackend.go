@@ -118,21 +118,26 @@ func NewSqlAuthBackend(driverName, dataSourceName string) (b SqlAuthBackend, e e
 
 // User returns the user with the given username. Error is set to
 // ErrMissingUser if user is not found.
-func (b SqlAuthBackend) User(username string) (user UserData, e error) {
+func (b SqlAuthBackend) User(username string) (user User, e error) {
 	row := b.userStmt.QueryRow(username)
-	err := row.Scan(&user.Email, &user.Hash, &user.Role)
+	var email, role string
+	var hash []byte
+	err := row.Scan(&email, &hash, &role)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return user, ErrMissingUser
 		}
 		return user, mksqlerror(err.Error())
 	}
-	user.Username = username
+	user.SetEmail(email)
+	user.SetRole(role)
+	user.SetHash(hash)
+	user.SetUsername(username)
 	return user, nil
 }
 
 // Users returns a slice of all users.
-func (b SqlAuthBackend) Users() (us []UserData, e error) {
+func (b SqlAuthBackend) Users() (us []User, e error) {
 	rows, err := b.usersStmt.Query()
 	if err != nil {
 		return us, mksqlerror(err.Error())
@@ -146,14 +151,14 @@ func (b SqlAuthBackend) Users() (us []UserData, e error) {
 		if err != nil {
 			return us, mksqlerror(err.Error())
 		}
-		us = append(us, UserData{username, email, hash, role})
+		us = append(us, &UserData{username, email, hash, role})
 	}
 	return us, nil
 }
 
 // SaveUser adds a new user, replacing one with the same username.
-func (b SqlAuthBackend) SaveUser(user UserData) (err error) {
-	if _, err := b.User(user.Username); err == nil {
+func (b SqlAuthBackend) SaveUser(user User) (err error) {
+	if _, err := b.User(user.Username()); err == nil {
 		_, err = b.updateStmt.Exec(user.Email, user.Hash, user.Role, user.Username)
 	} else {
 		_, err = b.insertStmt.Exec(user.Username, user.Email, user.Hash, user.Role)

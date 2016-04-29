@@ -38,15 +38,66 @@ var (
 // integer. Roles must be greater than zero.
 type Role int
 
+type User interface {
+	Username() string
+	SetUsername(string)
+	Email() string
+	SetEmail(string)
+	Hash() []byte
+	SetHash([]byte)
+	Role() string
+	SetRole(string)
+}
+
+func NewDefaultUser(username, email, role string) User {
+	return &UserData{
+		username: username,
+		email:    email,
+		role:     role,
+	}
+}
+
 // UserData represents a single user. It contains the users username, email,
 // and role as well as a hash of their password. When creating
 // users, you should not specify a hash; it will be generated in the Register
 // and Update functions.
 type UserData struct {
-	Username string `bson:"Username"`
-	Email    string `bson:"Email"`
-	Hash     []byte `bson:"Hash"`
-	Role     string `bson:"Role"`
+	username string `bson:"Username"`
+	email    string `bson:"Email"`
+	hash     []byte `bson:"Hash"`
+	role     string `bson:"Role"`
+}
+
+func (u *UserData) Username() string {
+	return u.username
+}
+
+func (u *UserData) SetUsername(username string) {
+	u.username = username
+}
+
+func (u *UserData) Email() string {
+	return u.email
+}
+
+func (u *UserData) SetEmail(email string) {
+	u.email = email
+}
+
+func (u *UserData) Hash() []byte {
+	return u.hash
+}
+
+func (u *UserData) SetHash(h []byte) {
+	u.hash = h
+}
+
+func (u *UserData) Role() string {
+	return u.role
+}
+
+func (u *UserData) SetRole(r string) {
+	u.role = r
 }
 
 // Authorizer structures contain the store of user session cookies a reference
@@ -61,9 +112,9 @@ type Authorizer struct {
 // The AuthBackend interface defines a set of methods an AuthBackend must
 // implement.
 type AuthBackend interface {
-	SaveUser(u UserData) error
-	User(username string) (user UserData, e error)
-	Users() (users []UserData, e error)
+	SaveUser(u User) error
+	User(username string) (user User, e error)
+	Users() (users []User, e error)
 	DeleteUser(username string) error
 	Close()
 }
@@ -122,7 +173,7 @@ func (a Authorizer) Login(rw http.ResponseWriter, req *http.Request, u string, p
 		return mkerror("already authenticated")
 	}
 	if user, err := a.backend.User(u); err == nil {
-		verify := bcrypt.CompareHashAndPassword(user.Hash, []byte(p))
+		verify := bcrypt.CompareHashAndPassword(user.Hash(), []byte(p))
 		if verify != nil {
 			a.addMessage(rw, req, "Invalid username or password.")
 			return mkerror("password doesn't match")
@@ -148,13 +199,13 @@ func (a Authorizer) Login(rw http.ResponseWriter, req *http.Request, u string, p
 // Pass in a instance of UserData with at least a username and email specified. If no role
 // is given, the default one is used.
 func (a Authorizer) Register(rw http.ResponseWriter, req *http.Request, user UserData, password string) error {
-	if user.Username == "" {
+	if user.Username() == "" {
 		return mkerror("no username given")
 	}
-	if user.Email == "" {
+	if user.Email() == "" {
 		return mkerror("no email given")
 	}
-	if user.Hash != nil {
+	if user.Hash() != nil {
 		return mkerror("hash will be overwritten")
 	}
 	if password == "" {
@@ -162,7 +213,7 @@ func (a Authorizer) Register(rw http.ResponseWriter, req *http.Request, user Use
 	}
 
 	// Validate username
-	_, err := a.backend.User(user.Username)
+	_, err := a.backend.User(user.Username())
 	if err == nil {
 		a.addMessage(rw, req, "Username has been taken.")
 		return mkerror("user already exists")
@@ -178,18 +229,18 @@ func (a Authorizer) Register(rw http.ResponseWriter, req *http.Request, user Use
 	if err != nil {
 		return mkerror("couldn't save password: " + err.Error())
 	}
-	user.Hash = hash
+	user.SetHash(hash)
 
 	// Validate role
-	if user.Role == "" {
-		user.Role = a.defaultRole
+	if user.Role() == "" {
+		user.SetRole(a.defaultRole)
 	} else {
-		if _, ok := a.roles[user.Role]; !ok {
+		if _, ok := a.roles[user.Role()]; !ok {
 			return mkerror("non-existant role")
 		}
 	}
 
-	err = a.backend.SaveUser(user)
+	err = a.backend.SaveUser(&user)
 	if err != nil {
 		a.addMessage(rw, req, err.Error())
 		return mkerror(err.Error())
@@ -239,15 +290,15 @@ func (a Authorizer) Update(rw http.ResponseWriter, req *http.Request, u string, 
 			return mkerror("couldn't save password: " + err.Error())
 		}
 	} else {
-		hash = user.Hash
+		hash = user.Hash()
 	}
 	if e != "" {
 		email = e
 	} else {
-		email = user.Email
+		email = user.Email()
 	}
 
-	newuser := UserData{username, email, hash, user.Role}
+	newuser := &UserData{username, email, hash, user.Role()}
 
 	err = a.backend.SaveUser(newuser)
 	if err != nil {
@@ -314,7 +365,7 @@ func (a Authorizer) AuthorizeRole(rw http.ResponseWriter, req *http.Request, rol
 	authSession, _ := a.cookiejar.Get(req, "auth") // should I check err? I've already checked in call to Authorize
 	username := authSession.Values["username"]
 	if user, err := a.backend.User(username.(string)); err == nil {
-		if a.roles[user.Role] >= r {
+		if a.roles[user.Role()] >= r {
 			return nil
 		}
 		a.addMessage(rw, req, "You don't have sufficient privileges.")
@@ -325,7 +376,7 @@ func (a Authorizer) AuthorizeRole(rw http.ResponseWriter, req *http.Request, rol
 
 // CurrentUser returns the currently logged in user and a boolean validating
 // the information.
-func (a Authorizer) CurrentUser(rw http.ResponseWriter, req *http.Request) (user UserData, e error) {
+func (a Authorizer) CurrentUser(rw http.ResponseWriter, req *http.Request) (user User, e error) {
 	if err := a.Authorize(rw, req, false); err != nil {
 		return user, mkerror(err.Error())
 	}
